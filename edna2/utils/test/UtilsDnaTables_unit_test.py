@@ -23,15 +23,13 @@ __authors__ = ['O. Svensson']
 __license__ = 'MIT'
 __date__ = '21/04/2019'
 
-import pprint
 import pathlib
-import logging
 import unittest
 
-from utils import UtilsDnaTables
+from edna2.utils import UtilsDnaTables
+from edna2.utils import UtilsLogging
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
+logger = UtilsLogging.getLogger()
 
 
 class UtilsTestUnitTest(unittest.TestCase):

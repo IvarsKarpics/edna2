@@ -28,17 +28,30 @@ __date__ = "10/05/2019"
 # mxv1/plugins/EDPluginControlImageQualityIndicators-v1.4/plugins/
 #      EDPluginControlImageQualityIndicatorsv1_4.py
 
-import logging
+import os
+import time
+import numpy
+import base64
 import pathlib
 
-from tasks.AbstractTask import AbstractTask
-from tasks.WaitFileTask import WaitFileTask
-from tasks.DozorTasks import ControlDozor
 
-from utils import UtilsImage
-from utils import UtilsConfig
+from edna2.tasks.AbstractTask import AbstractTask
+from edna2.tasks.WaitFileTask import WaitFileTask
+from edna2.tasks.DozorTasks import ControlDozor
+from edna2.tasks.H5ToCBFTask import H5ToCBFTask
+from edna2.tasks.PhenixTasks import DistlSignalStrengthTask
+from edna2.tasks.ReadImageHeader import ReadImageHeader
+try:
+    from edna2.tasks.CrystfelTasks import ExeCrystFEL
+    crystFelImportFailed = False
+except ImportError:
+    crystFelImportFailed = True
 
-logger = logging.getLogger('edna2')
+from edna2.utils import UtilsImage
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
+
+logger = UtilsLogging.getLogger()
 
 DEFAULT_MIN_IMAGE_SIZE = 1000000
 DEFAULT_WAIT_FILE_TIMEOUT = 120
@@ -55,6 +68,7 @@ class ImageQualityIndicatorsTask(AbstractTask):
             "properties": {
                 "doDistlSignalStrength": {"type": "boolean"},
                 "doIndexing": {"type": "boolean"},
+                "doCrystfel": {"type": "boolean"},
                 "doUploadToIspyb": {"type": "boolean"},
                 "processDirectory": {"type": "string"},
                 "image": {
@@ -79,54 +93,21 @@ class ImageQualityIndicatorsTask(AbstractTask):
                 "imageQualityIndicators": {
                     "type": "array",
                     "items": {
-                        "type": "object",
-                        "required": ["number", "angle", "spotsNumOf",
-                                     "spotsIntAver", "spotsResolution",
-                                     "mainScore", "spotScore",
-                                     "visibleResolution"],
-                        "properties": {
-                            "dozor_score": {"type": "number"},
-                            "dozorSpotFile": {"type": "string"},
-                            "dozorSpotList": {"type": "string"},
-                            "dozorSpotListShape": {
-                                "type": "array",
-                                "items": {
-                                    "type": "integer",
-                                }
-                            },
-                            "dozorSpotsIntAver": {"type": "number"},
-                            "dozorSpotsResolution": {"type": "number"},
-                            "dozorVisibleResolution": {"type": "number"},
-                            "binPopCutOffMethod2Res": {"type": "number"},
-                            "goodBraggCandidates": {"type": "integer"},
-                            "iceRings": {"type": "integer"},
-                            "image": {"type": "string"},
-                            "inResTotal": {"type": "integer"},
-                            "inResolutionOvrlSpots": {"type": "integer"},
-                            "maxUnitCell": {"type": "number"},
-                            "method1Res": {"type": "number"},
-                            "method2Res": {"type": "number"},
-                            "pctSaturationTop50Peaks": {"type": "number"},
-                            "saturationRangeAverage": {"type": "number"},
-                            "saturationRangeMax": {"type": "number"},
-                            "saturationRangeMin": {"type": "number"},
-                            "selectedIndexingSolution": {"type": "number"},
-                            "signalRangeAverage": {"type": "number"},
-                            "signalRangeMax": {"type": "number"},
-                            "signalRangeMin": {"type": "number"},
-                            "spotTotal": {"type": "integer"},
-                            "totalIntegratedSignal": {"type": "number"},
-                        },
-                    },
+                        "$ref": self.getSchemaUrl("imageQualityIndicators.json")
+                    }
                 },
                 "inputDozor": {"type": "number"},
             },
         }
 
-    def run(self, inData={}):
+    def run(self, inData):
         batchSize = inData.get('batchSize', 1)
         doDistlSignalStrength = inData.get('doDistlSignalStrength', False)
         doIndexing = inData.get('doIndexing', False)
+        if crystFelImportFailed:
+            doCrystfel = False
+        else:
+            doCrystfel = inData.get('doCrystfel', True)
         isFastMesh = inData.get('fastMesh', False)
         # Loop through all the incoming reference images
         listImage = inData.get('image', [])
@@ -140,14 +121,17 @@ class ImageQualityIndicatorsTask(AbstractTask):
                 imageName = template.replace("####", "{0:04d}".format(index))
                 imagePath = directory / imageName
                 listImage.append(str(imagePath))
+        outData = dict()
         listImageQualityIndicators = []
+        listcrystfel_output = []
         inDataWaitFile = {}
         listDistlTask = []
         listDozorTask = []
         listOfImagesInBatch = []
         listOfAllBatches = []
         indexBatch = 0
-        listH5FilePath = []
+        self.listH5FilePath = []
+        detectorType = None
         # Configurations
         minImageSize = UtilsConfig.get(
             self, 'minImageSize', defaultValue=DEFAULT_MIN_IMAGE_SIZE)
@@ -162,179 +146,137 @@ class ImageQualityIndicatorsTask(AbstractTask):
         if len(listOfImagesInBatch) > 0:
             listOfAllBatches.append(listOfImagesInBatch)
             listOfImagesInBatch = []
-        # Loop over batches
+
+        # Loop over batches:
+        # - Wait for all files in batch
+        # - If H5: First convert to CBF
+        # - Run Dozor and then run Crystfel if required
+        # -
         for listOfImagesInBatch in listOfAllBatches:
-            # First wait for images
+            listOfH5FilesInBatch = []
             for imagePath in listOfImagesInBatch:
-                # If Eiger, just wait for the h5 file
-                if imagePath.suffix == '.h5':
-                    h5MasterFilePath, h5DataFilePath, hdf5ImageNumber = \
-                        self.getH5FilePath(image,
-                                           batchSize=batchSize,
-                                           isFastMesh=isFastMesh)
-                    if not h5DataFilePath in listH5FilePath:
-                        raise RuntimeError("not yet implemented...")
-                    #     logger.info("Eiger data, waiting for master" +
-                    #                 " and data files...")
-                    #     listH5FilePath.append(h5DataFilePath)
-                    #     self.edPluginMXWaitFile = self.loadPlugin(self.strPluginMXWaitFileName)
-                    #     xsDataInputMXWaitFile.file = XSDataFile(XSDataString(h5DataFilePath))
-                    #     xsDataInputMXWaitFile.setSize(XSDataInteger(self.minImageSize))
-                    #     xsDataInputMXWaitFile.setTimeOut(XSDataTime(self.fMXWaitFileTimeOut))
-                    #     self.screen("Waiting for file {0}".format(h5DataFilePath))
-                    #     self.DEBUG("Wait file timeOut set to %f" % self.fMXWaitFileTimeOut)
-                    #     self.edPluginMXWaitFile.setDataInput(xsDataInputMXWaitFile)
-                    #     self.edPluginMXWaitFile.executeSynchronous()
-                    #     #                    hdf5FilePath = strPathToImage.replace(".cbf", ".h5")
-                    #     time.sleep(1)
-                    # if not os.path.exists(h5DataFilePath):
-                    #     strError = "Time-out while waiting for image %s" % h5DataFilePath
-                    #     self.error(strError)
-                    #     self.addErrorMessage(strError)
-                    #     self.setFailure()
-                else:
-                    if not imagePath.exists():
-                        # self.screen("Waiting for file {0}".format(strPathToImage))
-                        inDataWaitFileTask = {
-                            'file': str(imagePath),
-                            'size': minImageSize,
-                            'timeOut': waitFileTimeOut
-                        }
-                        waitFileTask = WaitFileTask(inData=inDataWaitFileTask)
-                        logger.info("Wait file timeOut set to %.0f s" % waitFileTimeOut)
-                        waitFileTask.execute()
-                    if not imagePath.exists():
-                        errormessage = "Time-out while waiting for image "+ \
-                                       str(imagePath)
-                        logger.error(errormessage)
-                        self.setFailure()
+                # First wait for images
+                self.waitForImagePath(
+                    imagePath=imagePath,
+                    batchSize=batchSize,
+                    isFastMesh=isFastMesh,
+                    minImageSize=minImageSize,
+                    waitFileTimeOut=waitFileTimeOut,
+                    listofH5FilesInBatch=listOfH5FilesInBatch
+                )
             if not self.isFailure():
                 pathToFirstImage = listOfImagesInBatch[0]
-                if imagePath.suffix == '.h5':
-                    raise RuntimeError("not yet implemented...")
-                    # indexLoop = 1
-                    # continueLoop = True
-                    # while continueLoop:
-        #                 directory = os.path.dirname(strPathToFirstImage)
-        #                 firstImage = EDUtilsImage.getImageNumber(listOfImagesInBatch[0].path.value)
-        #                 lastImage = EDUtilsImage.getImageNumber(listOfImagesInBatch[-1].path.value)
-        #                 xsDataInputH5ToCBF = XSDataInputH5ToCBF()
-        #                 xsDataInputH5ToCBF.hdf5File = XSDataFile(listOfImagesInBatch[0].path)
-        #                 xsDataInputH5ToCBF.hdf5ImageNumber = XSDataInteger(1)
-        #                 xsDataInputH5ToCBF.startImageNumber = XSDataInteger(firstImage)
-        #                 xsDataInputH5ToCBF.endImageNumber = XSDataInteger(lastImage)
-        #                 xsDataInputH5ToCBF.forcedOutputDirectory = XSDataFile(XSDataString(directory))
-        #                 edPluginH5ToCBF = self.loadPlugin("EDPluginH5ToCBFv1_1")
-        #                 edPluginH5ToCBF.dataInput = xsDataInputH5ToCBF
-        #                 edPluginH5ToCBF.execute()
-        #                 edPluginH5ToCBF.synchronize()
-        #                 outputCBFFileTemplate = edPluginH5ToCBF.dataOutput.outputCBFFileTemplate
-        #                 if outputCBFFileTemplate is not None:
-        #                     lastCbfFile = outputCBFFileTemplate.path.value.replace("######", "{0:06d}".format(
-        #                         EDUtilsImage.getImageNumber(listOfImagesInBatch[-1].path.value)))
-        #                     strPathToImage = os.path.join(directory, lastCbfFile)
+                if pathToFirstImage.suffix == '.h5':
+                    directory = pathToFirstImage.parent
+                    firstImage = UtilsImage.getImageNumber(listOfImagesInBatch[0])
+                    lastImage = UtilsImage.getImageNumber(listOfImagesInBatch[-1])
+                    inDataH5ToCBF = {
+                        'hdf5File': listOfImagesInBatch[0],
+                        'hdf5ImageNumber': 1,
+                        'startImageNumber': firstImage,
+                        'endImageNumber': lastImage,
+                        'forcedOutputDirectory': directory
+                    }
+                    h5ToCBFTask = H5ToCBFTask(inData=inDataH5ToCBF)
+                    h5ToCBFTask.execute()
+                    if h5ToCBFTask.isSuccess():
+                        outputCBFFileTemplate = h5ToCBFTask.outData['outputCBFFileTemplate']
+                        if outputCBFFileTemplate is not None:
+                            lastCbfFile = outputCBFFileTemplate.replace("######", "{0:06d}".format(
+                                UtilsImage.getImageNumber(listOfImagesInBatch[-1])))
+                            strPathToImage = os.path.join(directory, lastCbfFile)
         #                     #                        print(cbfFile.path.value)
-        #                     if os.path.exists(strPathToImage):
-        #                         # Rename all images
-        #                         for image in listOfImagesInBatch:
-        #                             image.path.value = image.path.value.replace(".h5", ".cbf")
-        #                             imageNumber = EDUtilsImage.getImageNumber(image.path.value)
-        #                             oldPath = os.path.join(directory, outputCBFFileTemplate.path.value.replace("######",
-        #                                                                                                        "{0:06d}".format(
-        #                                                                                                            imageNumber)))
-        #                             newPath = os.path.join(directory, outputCBFFileTemplate.path.value.replace("######",
-        #                                                                                                        "{0:04d}".format(
-        #                                                                                                            imageNumber)))
-        #                             os.rename(oldPath, newPath)
-        #                         lastCbfFile = outputCBFFileTemplate.path.value.replace("######", "{0:04d}".format(
-        #                             EDUtilsImage.getImageNumber(listOfImagesInBatch[-1].path.value)))
-        #                         strPathToImage = os.path.join(directory, lastCbfFile)
-        #                         self.screen("Image has been converted to CBF file: {0}".format(strPathToImage))
-        #                         continueLoop = False
-        #                 #                    print(continueLoop)
-        #                 if continueLoop:
-        #                     self.screen("Still waiting for converting to CBF file: {0}".format(strPathToImage))
-        #                     indexLoop += 1
-        #                     time.sleep(5)
-        #                     if indexLoop > 10:
-        #                         continueLoop = False
-        #
-                for image in listOfImagesInBatch:
-                    execImageQualityIndicatorTask = None
-                    # Check if we should run distl.signalStrength
-                    if doDistlSignalStrength:
-                        raise RuntimeError("not yet implemented...")
-                        # if self.bUseThinClient:
-                        #     strPluginName = self.strPluginNameThinClient
-                        # else:
-                        #     strPluginName = self.strPluginName
-                        # edPluginPluginExecImageQualityIndicator = self.loadPlugin(strPluginName)
-                        # self.listPluginExecImageQualityIndicator.append(edPluginPluginExecImageQualityIndicator)
-                        # xsDataInputDistlSignalStrength = XSDataInputDistlSignalStrength()
-                        # xsDataInputDistlSignalStrength.setReferenceImage(xsDataImageNew)
-                        # edPluginPluginExecImageQualityIndicator.setDataInput(xsDataInputDistlSignalStrength)
-                        # edPluginPluginExecImageQualityIndicator.execute()
-                    listDistlTask.append((imagePath, execImageQualityIndicatorTask))
+                            if os.path.exists(strPathToImage):
+                                # Rename all images
+                                oldListOfImagesInBatch = listOfImagesInBatch
+                                listOfImagesInBatch = []
+                                for imagePathH5 in oldListOfImagesInBatch:
+                                    imagePathCbf = pathlib.Path(str(imagePathH5).replace('.h5', '.cbf'))
+                                    listOfImagesInBatch.append(imagePathCbf)
+                                    imageNumber = UtilsImage.getImageNumber(imagePathCbf)
+                                    oldPath = directory / outputCBFFileTemplate.replace('######',
+                                                                                        '{0:06d}'.format(imageNumber))
+                                    newPath = directory / outputCBFFileTemplate.replace('######',
+                                                                                        '{0:04d}'.format(imageNumber))
+                                    os.rename(oldPath, newPath)
+                                lastCbfFile = outputCBFFileTemplate.replace(
+                                    '######',
+                                    '{0:04d}'.format(UtilsImage.getImageNumber(listOfImagesInBatch[-1])))
+                                pathToLastImage = directory / lastCbfFile
+                                logger.info("Image has been converted to CBF file: {0}".format(pathToLastImage))
+                # Run Control Dozor
+                inDataControlDozor = {
+                    'image': listOfImagesInBatch,
+                    'batchSize': len(listOfImagesInBatch)
+                }
+                controlDozor = ControlDozor(inDataControlDozor)
+                controlDozor.start()
+                listDozorTask.append((controlDozor, inDataControlDozor,
+                                      list(listOfImagesInBatch), listOfH5FilesInBatch))
+                # Check if we should run distl.signalStrength
+                if doDistlSignalStrength:
+                    for image in listOfImagesInBatch:
+                        inDataDistl = {
+                            'referenceImage': str(image)
+                        }
+                        distlTask = DistlSignalStrengthTask(inData=inDataDistl)
+                        distlTask.start()
+                        listDistlTask.append((image, distlTask))
+        if not self.isFailure():
+            # listIndexing = []
+            listDistlResult = []
+            # Synchronize all image quality indicator plugins and upload to ISPyB
+            for (image, distlTask) in listDistlTask:
+                imageQualityIndicators = {}
+                if distlTask is not None:
+                    distlTask.join()
+                    if distlTask.isSuccess():
+                        outDataDistl = distlTask.outData
+                        if outDataDistl is not None:
+                            imageQualityIndicators = outDataDistl['imageQualityIndicators']
+                imageQualityIndicators['image'] = str(image)
+                listDistlResult.append(imageQualityIndicators)
+                # self.xsDataResultControlImageQualityIndicators.addImageQualityIndicators(xsDataImageQualityIndicators)
+            for (controlDozor, inDataControlDozor, listBatch, listH5FilePath) in listDozorTask:
+                controlDozor.join()
+                # Check that we got at least one result
+                if len(controlDozor.outData['imageQualityIndicators']) == 0:
+                    # Run the dozor plugin again, this time synchronously
+                    firstImage = listBatch[0].name
+                    lastImage = listBatch[-1].name
+                    logger.warning("No dozor results! Re-executing Dozor for" +
+                                   " images {0} to {1}".format(firstImage, lastImage))
+                    time.sleep(5)
+                    controlDozor = ControlDozor(inDataControlDozor)
+                    controlDozor.execute()
+                listOutDataControlDozor = list(controlDozor.outData['imageQualityIndicators'])
+                if detectorType is None:
+                    detectorType = controlDozor.outData['detectorType']
+                if doDistlSignalStrength:
+                    for outDataControlDozor in listOutDataControlDozor:
+                        for distlResult in listDistlResult:
+                            if outDataControlDozor['image'] == distlResult['image']:
+                                imageQualityIndicators = dict(outDataControlDozor)
+                                imageQualityIndicators.update(distlResult)
+                                listImageQualityIndicators.append(imageQualityIndicators)
+                else:
+                    listImageQualityIndicators += listOutDataControlDozor
 
-                # controlDozor = ControlDozor(inData={})
-                # xsDataInputControlDozor = XSDataInputControlDozor()
-                # for image in listOfImagesInBatch:
-                #     xsDataInputControlDozor.addImage(XSDataFile(image.path))
-                # xsDataInputControlDozor.batchSize = XSDataInteger(len(listOfImagesInBatch))
-                # edPluginControlDozor.dataInput = xsDataInputControlDozor
-                # edPluginControlDozor.execute()
-                # listPluginDozor.append((edPluginControlDozor, list(listOfImagesInBatch)))
-        #
-        # if not self.isFailure():
-        #     listIndexing = []
-        #     # Synchronize all image quality indicator plugins and upload to ISPyB
-        #     xsDataInputStoreListOfImageQualityIndicators = XSDataInputStoreListOfImageQualityIndicators()
-        #
-        #     for (xsDataImage, edPluginPluginExecImageQualityIndicator) in listPluginDistl:
-        #         xsDataImageQualityIndicators = XSDataImageQualityIndicators()
-        #         xsDataImageQualityIndicators.image = xsDataImage.copy()
-        #         if edPluginPluginExecImageQualityIndicator is not None:
-        #             edPluginPluginExecImageQualityIndicator.synchronize()
-        #             if edPluginPluginExecImageQualityIndicator.dataOutput is not None:
-        #                 if edPluginPluginExecImageQualityIndicator.dataOutput.imageQualityIndicators is not None:
-        #                     xsDataImageQualityIndicators = XSDataImageQualityIndicators.parseString( \
-        #                         edPluginPluginExecImageQualityIndicator.dataOutput.imageQualityIndicators.marshal())
-        #         self.xsDataResultControlImageQualityIndicators.addImageQualityIndicators(xsDataImageQualityIndicators)
-        #
-        #     for (edPluginControlDozor, listBatch) in listPluginDozor:
-        #         edPluginControlDozor.synchronize()
-        #         # Check that we got at least one result
-        #         if len(edPluginControlDozor.dataOutput.imageDozor) == 0:
-        #             # Run the dozor plugin again, this time synchronously
-        #             firstImage = os.path.basename(listBatch[0].path.value)
-        #             lastImage = os.path.basename(listBatch[-1].path.value)
-        #             self.screen(
-        #                 "No dozor results! Re-executing Dozor for images {0} to {1}".format(firstImage, lastImage))
-        #             time.sleep(5)
-        #             edPluginControlDozor = self.loadPlugin(self.strPluginNameControlDozor,
-        #                                                    "ControlDozor_reexecution_{0}".format(
-        #                                                        os.path.splitext(firstImage)[0]))
-        #             xsDataInputControlDozor = XSDataInputControlDozor()
-        #             for image in listBatch:
-        #                 xsDataInputControlDozor.addImage(XSDataFile(image.path))
-        #             xsDataInputControlDozor.batchSize = XSDataInteger(batchSize)
-        #             edPluginControlDozor.dataInput = xsDataInputControlDozor
-        #             edPluginControlDozor.executeSynchronous()
-        #         for imageDozor in edPluginControlDozor.dataOutput.imageDozor:
-        #             for xsDataImageQualityIndicators in self.xsDataResultControlImageQualityIndicators.imageQualityIndicators:
-        #                 if xsDataImageQualityIndicators.image.path.value == imageDozor.image.path.value:
-        #                     xsDataImageQualityIndicators.dozor_score = imageDozor.mainScore
-        #                     xsDataImageQualityIndicators.dozorSpotFile = imageDozor.spotFile
-        #                     if imageDozor.spotFile is not None:
-        #                         if os.path.exists(imageDozor.spotFile.path.value):
-        #                             numpyArray = numpy.loadtxt(imageDozor.spotFile.path.value, skiprows=3)
-        #                             xsDataImageQualityIndicators.dozorSpotList = XSDataString(
-        #                                 base64.b64encode(numpyArray.tostring()))
-        #                             xsDataImageQualityIndicators.addDozorSpotListShape(
-        #                                 XSDataInteger(numpyArray.shape[0]))
-        #                             if len(numpyArray.shape) > 1:
-        #                                 xsDataImageQualityIndicators.addDozorSpotListShape(
-        #                                     XSDataInteger(numpyArray.shape[1]))
+                if doCrystfel:
+                    # a work around as autocryst module works with only json file/string
+                    inDataCrystFEL = {
+                        'detectorType': detectorType,
+                        'imageQualityIndicators': listOutDataControlDozor,
+                        'listH5FilePath': listH5FilePath
+                    }
+                    crystfel = ExeCrystFEL(inData=inDataCrystFEL)
+                    crystfel.execute()
+                    if not crystfel.isFailure():
+                        cryst_result_out = crystfel.outData
+                        listcrystfel_output.append(cryst_result_out)
+                        # listImageQualityIndicators += listcrystfel_output
+
+
         #                     xsDataImageQualityIndicators.dozorSpotsIntAver = imageDozor.spotsIntAver
         #                     xsDataImageQualityIndicators.dozorSpotsResolution = imageDozor.spotsResolution
         #                     xsDataImageQualityIndicators.dozorVisibleResolution = imageDozor.visibleResolution
@@ -401,22 +343,12 @@ class ImageQualityIndicatorsTask(AbstractTask):
         #                 if selectedSolution is not None:
         #                     xsDataResultControlImageQualityIndicator.selectedIndexingSolution = selectedSolution
 
-        for image in listImage:
-            listImageQualityIndicators.append({
-                'image': image,
-                'number': None,
-                'angle': None,
-                'spotsNumOf': None,
-                'spotsIntAver': None,
-                'spotsResolution': None,
-                'mainScore': None,
-                'spotScore': None,
-                'visibleResolution': None
-            })
-        outData = {'imageQualityIndicators': listImageQualityIndicators}
+        outData['imageQualityIndicators'] = listImageQualityIndicators
+        outData['crystfel_per_batch'] = listcrystfel_output
         return outData
 
-    def getH5FilePath(self, filePath, batchSize=1, isFastMesh=False):
+    @classmethod
+    def getH5FilePath(cls, filePath, batchSize=1, isFastMesh=False):
         imageNumber = UtilsImage.getImageNumber(filePath)
         prefix = UtilsImage.getPrefix(filePath)
         if isFastMesh:
@@ -427,9 +359,52 @@ class ImageQualityIndicatorsTask(AbstractTask):
             h5FileNumber = int((imageNumber - 1) / batchSize) * batchSize + 1
         h5MasterFileName = "{prefix}_{h5FileNumber}_master.h5".format(
             prefix=prefix, h5FileNumber=h5FileNumber)
-        h5MasterFilePath = filePath.parent /h5MasterFileName
+        h5MasterFilePath = filePath.parent / h5MasterFileName
         h5DataFileName = \
             "{prefix}_{h5FileNumber}_data_{h5ImageNumber:06d}.h5".format(
                 prefix=prefix, h5FileNumber=h5FileNumber, h5ImageNumber=h5ImageNumber)
         h5DataFilePath = filePath.parent / h5DataFileName
         return h5MasterFilePath, h5DataFilePath, h5FileNumber
+
+    def waitForImagePath(self, imagePath, batchSize, isFastMesh,
+                         minImageSize, waitFileTimeOut, listofH5FilesInBatch):
+        # If Eiger, just wait for the h5 file
+        if imagePath.suffix == '.h5':
+            h5MasterFilePath, h5DataFilePath, hdf5ImageNumber = \
+                self.getH5FilePath(imagePath,
+                                   batchSize=batchSize,
+                                   isFastMesh=isFastMesh)
+            if h5DataFilePath not in listofH5FilesInBatch:
+                listofH5FilesInBatch.append(h5DataFilePath)
+                logger.info("Eiger data, waiting for master" +
+                            " and data files...")
+                inDataWaitFileTask = {
+                    'file': str(h5DataFilePath),
+                    'size': minImageSize,
+                    'timeOut': waitFileTimeOut
+                }
+                waitFileTask = WaitFileTask(inData=inDataWaitFileTask)
+                logger.info("Waiting for file {0}".format(h5DataFilePath))
+                logger.debug("Wait file timeOut set to %f" % waitFileTimeOut)
+                waitFileTask.execute()
+                time.sleep(1)
+            if not os.path.exists(h5DataFilePath):
+                errorMessage = "Time-out while waiting for image %s" % h5DataFilePath
+                logger.error(errorMessage)
+                self.setFailure()
+        else:
+            if not imagePath.exists():
+                logger.info("Waiting for file {0}".format(imagePath))
+                inDataWaitFileTask = {
+                    'file': str(imagePath),
+                    'size': minImageSize,
+                    'timeOut': waitFileTimeOut
+                }
+                waitFileTask = WaitFileTask(inData=inDataWaitFileTask)
+                logger.debug("Wait file timeOut set to %.0f s" % waitFileTimeOut)
+                waitFileTask.execute()
+            if not imagePath.exists():
+                errorMessage = "Time-out while waiting for image " + \
+                               str(imagePath)
+                logger.error(errorMessage)
+                self.setFailure()

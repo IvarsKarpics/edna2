@@ -23,18 +23,15 @@ __authors__ = ["O. Svensson"]
 __license__ = "MIT"
 __date__ = "21/04/2019"
 
-import os
-import logging
 import unittest
 
-from utils import UtilsTest
-from utils import UtilsConfig
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-from tasks.CCP4Tasks import AimlessTask
+from edna2.tasks.CCP4Tasks import AimlessTask
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+logger = UtilsLogging.getLogger()
 
 
 class AimlessTasksExecTest(unittest.TestCase):
@@ -42,16 +39,15 @@ class AimlessTasksExecTest(unittest.TestCase):
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run aimless test with default config')
     def test_execute_AimlessTask(self):
-        if UtilsConfig.getSite() == 'Default':
-            UtilsConfig.setSite('esrf')
         referenceDataPath = self.dataPath / 'inDataAimlessTask.json'
         tmpDir = UtilsTest.createTestTmpDirectory('AimlessTask')
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath,
                                                     tmpDir=tmpDir)
         aimlessTask = AimlessTask(inData=inData)
         aimlessTask.execute()
-        assert not aimlessTask.isFailure()
+        self.assertTrue(aimlessTask.isSuccess())
         outData = aimlessTask.outData
-        assert outData['isSuccess']
+        self.assertTrue(outData['isSuccess'])

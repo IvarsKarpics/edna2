@@ -24,12 +24,12 @@ __license__ = 'MIT'
 __date__ = '21/04/2019'
 
 import os
-import json
 import unittest
 
-from tasks.DozorTasks import ExecDozor
+from edna2.tasks.DozorTasks import ExecDozor
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
 
 
 class ExecDozorTest(unittest.TestCase):
@@ -37,7 +37,8 @@ class ExecDozorTest(unittest.TestCase):
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run dozor test with default config')
     def test_execute_Dozor(self):
         referenceDataPath = self.dataPath / 'inDataDozor.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
@@ -47,6 +48,6 @@ class ExecDozorTest(unittest.TestCase):
             UtilsTest.loadTestImage(fileName)
         dozor = ExecDozor(inData=inData)
         dozor.execute()
-        assert dozor.isSuccess()
+        self.assertTrue(dozor.isSuccess())
         outData = dozor.outData
         self.assertEqual(len(outData['imageDozor']), 10)

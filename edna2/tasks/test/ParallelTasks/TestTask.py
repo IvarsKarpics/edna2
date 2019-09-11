@@ -24,11 +24,12 @@ __license__ = 'MIT'
 __date__ = '21/04/2019'
 
 import time
-import logging
 
-from tasks.AbstractTask import AbstractTask
+from edna2.utils import UtilsLogging
 
-logger = logging.getLogger('edna2')
+from edna2.tasks.AbstractTask import AbstractTask
+
+logger = UtilsLogging.getLogger()
 
 
 class TestTask(AbstractTask):

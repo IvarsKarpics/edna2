@@ -34,6 +34,12 @@ Documentation
 
 The documentation can be found at https://edna2.readthedocs.io.
 
+Testing and code review
+-----------------------
+
+- Travis CI status: |Travis Status|
+- Automatic code quality check: https://app.codacy.com/project/olofsvensson/edna2/dashboard
+
 Contribute
 ----------
 
@@ -52,3 +58,6 @@ The source code of *edna2* is licensed under the MIT license.
 See the `LICENSE <https://github.com/olofsvensson/edna2/blob/master/LICENSE>`_
 and `copyright <https://github.com/olofsvensson/edna2/blob/master/copyright>`_
 files for details.
+
+.. |Travis Status| image:: https://api.travis-ci.org/olofsvensson/edna2.svg?branch=master
+   :target: https://travis-ci.org/olofsvensson/edna2?branch=master

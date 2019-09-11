@@ -28,18 +28,39 @@ __date__ = '21/04/2019'
 # mxPluginExec/plugins/EDPluginH5ToCBF-v1.1/plugins/EDPluginH5ToCBFv1_1.py
 
 import pathlib
-import logging
 
-from tasks.AbstractTask import AbstractTask
+from edna2.tasks.AbstractTask import AbstractTask
 
-from utils import UtilsPath
-from utils import UtilsImage
-from utils import UtilsConfig
+from edna2.utils import UtilsImage
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-logger = logging.getLogger('edna2')
+logger = UtilsLogging.getLogger()
 
 
 class H5ToCBFTask(AbstractTask):
+
+    def getInDataSchema(self):
+        return {
+            "type": "object",
+            "required": ["hdf5File"],
+            "properties": {
+                "imageNumber": {"type": "integer"},
+                "startImageNumber": {"type": "integer"},
+                "imageNumber": {"type": "integer"},
+                "hdf5ImageNumber": {"type": "integer"},
+                "hdf5File": {"type": "string"},
+                "forcedOutputDirectory": {"type": "string"}
+            }
+        }
+
+    def getOutDataSchema(self):
+        return {
+            "type": "object",
+            "properties": {
+                "outputCBFFile": {"type": "string"}
+            }
+        }
 
     def run(self, inData):
         outData = {}
@@ -55,10 +76,11 @@ class H5ToCBFTask(AbstractTask):
                 inData, directory, prefix, hdf5File)
             outData['outputCBFFileTemplate'] = template
         self.setLogFileName('h5ToCBF.log')
-        self.runCommandLine('eiger2cbf ' + commandLine)
+        self.runCommandLine('eiger2cbf ' + commandLine, ignoreErrors=True)
         return outData
 
-    def generateCommandsWithImageNumber(self, inData, directory, prefix,
+    @classmethod
+    def generateCommandsWithImageNumber(cls, inData, directory, prefix,
                                         hdf5File):
         """
         This method creates a list of commands for the converter
@@ -72,9 +94,9 @@ class H5ToCBFTask(AbstractTask):
             masterFile = hdf5File
         else:
             if UtilsConfig.isEMBL():
-                fileName = prefix + "_master.h5".format(hdf5ImageNumber)
+                fileName = '{0}_master.h5'.format(prefix)
             else:
-                fileName = prefix + "_{0}_master.h5".format(hdf5ImageNumber)
+                fileName = '{0}_{1}_master.h5'.format(prefix, hdf5ImageNumber)
             masterFile = directory / fileName
         if 'forcedOutputImageNumber' in inData:
             cbfFileName = prefix + \
@@ -96,7 +118,8 @@ class H5ToCBFTask(AbstractTask):
         )
         return commandLine, cbfFile
 
-    def generateCommandsWithImageRange(self, inData, directory, prefix, hdf5File):
+    @classmethod
+    def generateCommandsWithImageRange(cls, inData, directory, prefix, hdf5File):
         startImageNumber = inData['startImageNumber']
         endImageNumber = inData['endImageNumber']
         if 'hdf5ImageNumber' in inData:

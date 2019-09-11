@@ -23,16 +23,14 @@ __authors__ = ["O. Svensson"]
 __license__ = "MIT"
 __date__ = "21/04/2019"
 
-import logging
 import unittest
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsLogging
 
-from tasks.HelloWorldTask import HelloWorldTask
+from edna2.tasks.HelloWorldTask import HelloWorldTask
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+logger = UtilsLogging.getLogger()
 
 
 class HelloWorldTaskExecTest(unittest.TestCase):
@@ -45,8 +43,8 @@ class HelloWorldTaskExecTest(unittest.TestCase):
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         helloWorldTask = HelloWorldTask(inData=inData)
         helloWorldTask.execute()
-        assert not helloWorldTask.isFailure()
+        self.assertTrue(helloWorldTask.isSuccess())
         outData = helloWorldTask.outData
-        assert 'results' in outData
-        assert 'Hello world' in outData['results']
+        self.assertTrue('results' in outData)
+        self.assertTrue('Hello world' in outData['results'])
         logger.info('Results from HelloWorldTask: {0}'.format(outData['results']))

@@ -28,10 +28,11 @@ __date__ = '21/04/2019'
 # kernel/src/EDUtilsTable.py
 
 import json
-import logging
 import xmltodict
 
-logger = logging.getLogger('edna2')
+from edna2.utils import UtilsLogging
+
+logger = UtilsLogging.getLogger()
 
 
 def getDict(dnaTablesPath):
@@ -55,7 +56,7 @@ def getTables(dictDnaTables, tableName):
 
 
 def getListParam(table):
-    if type(table['list']) == list:
+    if isinstance(table['list'], list):
         listParam = table['list']
     else:
         listParam = [table['list']]
@@ -64,7 +65,7 @@ def getListParam(table):
 
 def getItemValue(dictParameter, key):
     value = None
-    if type(dictParameter['item']) == list:
+    if isinstance(dictParameter['item'], list):
         listItem = dictParameter['item']
     else:
         listItem = [dictParameter['item']]
@@ -81,7 +82,8 @@ def _convertFromString(value):
                 value = float(value)
             else:
                 value = int(value)
-        except:
+        except ValueError:
+            # The value is returned as a string...
             pass
     return value
 
@@ -90,7 +92,7 @@ def getListValue(listParameter, key1, key2):
     value = None
     for dictParameter in listParameter:
         if dictParameter['@name'] == key1:
-            if type(dictParameter['item']) == list:
+            if isinstance(dictParameter['item'], list):
                 for item in dictParameter['item']:
                     if item['@name'] == key2:
                         value = item['#text']

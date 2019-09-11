@@ -25,17 +25,15 @@ __date__ = "21/04/2019"
 
 
 import os
-import logging
 import unittest
 
-from utils import UtilsConfig
-from utils import UtilsTest
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsLogging
 
-from tasks.DozorTasks import ControlDozor
+from edna2.tasks.DozorTasks import ControlDozor
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+logger = UtilsLogging.getLogger()
 
 
 class ControlDozorExecTest(unittest.TestCase):
@@ -43,37 +41,41 @@ class ControlDozorExecTest(unittest.TestCase):
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     def test_execute_ControlDozor(self):
         referenceDataPath = self.dataPath / 'ControlDozor.json'
         self.inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 5
+        self.assertEqual(len(outData['imageQualityIndicators']), 5)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     def test_execute_ControlDozor_batchSize_2(self):
         referenceDataPath = self.dataPath / 'ControlDozor_batchSize_2.json'
         self.inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 5
+        self.assertEqual(len(outData['imageQualityIndicators']), 5)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     def test_execute_ControlDozor_batchSize_2a(self):
         referenceDataPath = self.dataPath / 'ControlDozor_batchSize_2a.json'
         self.inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 4
+        self.assertEqual(len(outData['imageQualityIndicators']), 4)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     @unittest.skipIf(not os.path.exists('/data/visitor/mx415/id30a2/20160315/' +
                                         'RAW_DATA/test3/mx415_1_0001.cbf'),
                      'Image /data/visitor/mx415/id30a2/20160315/RAW_DATA/' +
@@ -83,10 +85,12 @@ class ControlDozorExecTest(unittest.TestCase):
         self.inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 740
+        self.assertEqual(len(outData['imageQualityIndicators']), 740)
 
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     @unittest.skipIf(not os.path.exists('/data/visitor/mx415/id30a2/20180502/' +
                                         'RAW_DATA/t1/t1_1_0001.cbf'),
                      'Image /data/visitor/mx415/id30a2/20180502/RAW_DATA/' +
@@ -98,11 +102,13 @@ class ControlDozorExecTest(unittest.TestCase):
         self.inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         UtilsConfig.setSite(currentSite)
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 640
-        
+        self.assertEqual(len(outData['imageQualityIndicators']), 640)
+
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run control dozor test with default config')
     @unittest.skipIf(not os.path.exists('/data/visitor/mx415/id30a3/20171127/' +
                                         'RAW_DATA/mx415/1-2-2/MXPressF_01/' +
                                         'mesh-mx415_1_1_master.h5'),
@@ -116,6 +122,6 @@ class ControlDozorExecTest(unittest.TestCase):
         controlDozor = ControlDozor(inData=self.inData)
         controlDozor.execute()
         UtilsConfig.setSite(currentSite)
-        assert controlDozor.isSuccess()
+        self.assertTrue(controlDozor.isSuccess())
         outData = controlDozor.outData
-        assert len(outData['imageDozor']) == 51
+        self.assertEqual(len(outData['imageQualityIndicators']), 51)

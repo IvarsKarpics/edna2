@@ -59,7 +59,7 @@ def setSite(site):
     Sets the EDNA2_SITE variable.
     """
     os.environ["EDNA2_SITE"] = site
-    
+
 
 def getConfig(site=None):
     config = configparser.ConfigParser()
@@ -67,7 +67,7 @@ def getConfig(site=None):
         site = getSite()
     configFile = site + ".ini"
     configDir = getConfigDir()
-    configPath = configDir / configFile
+    configPath = configDir / configFile.lower()
     if configPath.exists():
         config.read(configPath.as_posix())
     return config
@@ -77,11 +77,13 @@ def getTaskConfig(taskName, site=None):
     dictConfig = {}
     config = getConfig(site)
     sections = config.sections()
-    if taskName in sections:
-        dictConfig = dict(config[taskName])
-    elif "Include" in sections:
+    # First search in included configs
+    if "Include" in sections:
         for site in config["Include"]:
-            dictConfig = getTaskConfig(taskName, site)
+            dictConfig.update(getTaskConfig(taskName, site))
+    # Then update with the current config
+    if taskName in sections:
+        dictConfig.update(dict(config[taskName]))
     # Substitute ${} from os.environ
     for key in dictConfig:
         dictConfig[key] = os.path.expandvars(dictConfig[key])
@@ -94,7 +96,7 @@ def isEMBL():
     """
     return getSite().lower().startswith('embl')
 
-    
+
 def isESRF():
     """
     Returns true if ESRF config
@@ -103,7 +105,7 @@ def isESRF():
 
 
 def get(task, parameterName, defaultValue=None):
-    if type(task) == str:
+    if isinstance(task, str):
         taskConfig = getTaskConfig(task)
     else:
         taskConfig = getTaskConfig(task.__class__.__name__)

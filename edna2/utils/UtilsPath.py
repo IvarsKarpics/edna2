@@ -29,12 +29,12 @@ __date__ = '21/04/2019'
 
 import os
 import pathlib
-import logging
 import tempfile
 
-from utils import UtilsConfig
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-logger = logging.getLogger('edna2')
+logger = UtilsLogging.getLogger()
 
 
 def getWorkingDirectory(task, inData):
@@ -53,7 +53,7 @@ def createPyarchFilePath(filePath):
     /data/visitor/mx415/id14eh1/20100209 -> /data/pyarch/2010/id14eh1/mx415/20100209
     """
     pyarchFilePath = None
-    if type(filePath) == str:
+    if isinstance(filePath, str):
         filePath = pathlib.Path(filePath)
     listOfDirectories = filePath.parts
     if UtilsConfig.isEMBL():

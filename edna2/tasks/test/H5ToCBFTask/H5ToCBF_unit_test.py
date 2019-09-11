@@ -26,10 +26,10 @@ __date__ = "21/04/2019"
 import pathlib
 import unittest
 
-from tasks.H5ToCBFTask import H5ToCBFTask
+from edna2.tasks.H5ToCBFTask import H5ToCBFTask
 
-from utils import UtilsTest
-from utils import UtilsImage
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsImage
 
 
 class H5ToCBFUnitTest(unittest.TestCase):
@@ -41,11 +41,10 @@ class H5ToCBFUnitTest(unittest.TestCase):
         referenceDataPath = self.dataPath / 'H5ToCBF_withImageNumber.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath,
                                                     loadTestImages=False)
-        h5ToCBF = H5ToCBFTask(inData=inData)
         hdf5File = pathlib.Path(inData['hdf5File'])
         directory = hdf5File.parent
         prefix = UtilsImage.getPrefix(hdf5File)
-        commandLine, cbfFile = h5ToCBF.generateCommandsWithImageNumber(
+        commandLine, cbfFile = H5ToCBFTask.generateCommandsWithImageNumber(
             inData, directory, prefix, hdf5File)
         self.assertTrue(commandLine is not None)
         self.assertTrue(cbfFile is not None)
@@ -54,11 +53,10 @@ class H5ToCBFUnitTest(unittest.TestCase):
         referenceDataPath = self.dataPath / 'H5ToCBF_withImageRange.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath,
                                                     loadTestImages=False)
-        h5ToCBF = H5ToCBFTask(inData=inData)
         hdf5File = pathlib.Path(inData['hdf5File'])
         directory = hdf5File.parent
         prefix = UtilsImage.getPrefix(hdf5File)
-        commandLine, template = h5ToCBF.generateCommandsWithImageRange(
+        commandLine, template = H5ToCBFTask.generateCommandsWithImageRange(
             inData, directory, prefix, hdf5File)
         self.assertTrue(commandLine is not None)
         self.assertTrue(template is not None)

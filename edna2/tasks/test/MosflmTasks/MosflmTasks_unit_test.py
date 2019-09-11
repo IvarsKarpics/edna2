@@ -24,18 +24,19 @@ __license__ = "MIT"
 __date__ = "14/05/2019"
 
 import os
-import pprint
-import logging
+import shutil
+import pathlib
 import unittest
+import tempfile
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsLogging
 
-from tasks.MosflmTasks import AbstractMosflmTask
-from tasks.MosflmTasks import MosflmIndexingTask
+from edna2.tasks.MosflmTasks import AbstractMosflmTask
+from edna2.tasks.MosflmTasks import MosflmIndexingTask
+from edna2.tasks.MosflmTasks import MosflmGeneratePredictionTask
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+logger = UtilsLogging.getLogger()
 
 
 class MosflmTasksUnitTest(unittest.TestCase):
@@ -58,40 +59,77 @@ class MosflmTasksUnitTest(unittest.TestCase):
             del os.environ['EDNA2_SITE']
 
     def test_generateMOSFLMCommands(self):
+        tempdir = tempfile.mkdtemp(prefix='generateMOSFLMCommands_test_')
+        tmpWorkingDir = pathlib.Path(tempdir)
         referenceDataPath = self.dataPath / 'inDataAbstractMosflmTask.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         abstractMosflmTask = AbstractMosflmTask(inData=inData)
-        listCommands = abstractMosflmTask.generateMOSFLMCommands(inData)
+        listCommands = abstractMosflmTask.generateMOSFLMCommands(inData,
+                                                                 tmpWorkingDir)
         # logger.info(pprint.pformat(listCommands))
         for requiredItem in ['BEAM', 'DETECTOR', 'OMEGA', 'REVERSEPHI',
                              'DIRECTORY', 'TEMPLATE', 'LIMITS EXCLUDE',
                              'RASTER', 'POLARIZATION']:
             self.assertTrue(requiredItem in ' '.join(listCommands))
+        shutil.rmtree(tempdir)
 
     def test_getNewmat(self):
-        inData = {}
-        abstractMosflmTask = AbstractMosflmTask(inData=inData)
-        newmat = abstractMosflmTask.getNewmat(self.dataPath / 'newmat.txt')
+        newmat = AbstractMosflmTask.getNewmat(self.dataPath / 'newmat.txt')
         self.assertTrue('cell' in newmat)
         self.assertTrue('matrixA' in newmat)
         self.assertTrue('matrixU' in newmat)
         self.assertTrue('missettingsAngles' in newmat)
 
+    def test_writeNewmat(self):
+        tempdir = tempfile.mkdtemp(prefix='MOSFLM_newmat_test_')
+        newmatJsonPath = self.dataPath / 'newmat.json'
+        newmat = UtilsTest.loadAndSubstitueTestData(newmatJsonPath)
+        newmatPath = pathlib.Path(tempdir) / "newmat.txt"
+        AbstractMosflmTask.writeNewmat(newmat, newmatPath)
+        self.assertTrue(newmatPath.exists())
+        shutil.rmtree(tempdir)
+
     def test_generateMOSFLMCommands_indexing(self):
+        tempdir = tempfile.mkdtemp(prefix='generateMOSFLMCommands_indexing_test_')
+        tmpWorkingDir = pathlib.Path(tempdir)
         referenceDataPath = self.dataPath / 'inDataAbstractMosflmTask.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
-        mosflmIndexingTask = MosflmIndexingTask(inData=inData)
-        listCommands = mosflmIndexingTask.generateMOSFLMCommands(inData)
-        # for requiredItem in ['BEAM', 'DETECTOR', 'OMEGA', 'REVERSEPHI',
-        #                      'DIRECTORY', 'TEMPLATE', 'LIMITS EXCLUDE',
-        #                      'RASTER', 'POLARIZATION']:
-        #     self.assertTrue(requiredItem in ' '.join(listCommands))
+        task = MosflmIndexingTask(inData)
+        listCommands = task.generateMOSFLMCommands(inData, tmpWorkingDir)
+        for requiredItem in ['BEAM', 'DETECTOR', 'OMEGA', 'REVERSEPHI',
+                             'DIRECTORY', 'TEMPLATE', 'LIMITS EXCLUDE',
+                             'RASTER', 'POLARIZATION']:
+            self.assertTrue(requiredItem in ' '.join(listCommands))
+        shutil.rmtree(tempdir)
 
     def test_parseIndexingMosflmOutput(self):
         newMatFilePath = self.dataPath / 'newmat.txt'
         dnaTablesPath = self.dataPath / 'indexingTwoImagesDnaTables.xml'
         task = MosflmIndexingTask(inData={})
         outData = task.parseIndexingMosflmOutput(newMatFilePath, dnaTablesPath)
-        logger.info(pprint.pformat(outData))
+        for parameter in ['newmat', 'mosaicityEstimation', 'deviationAngular',
+                          'refinedDistance', 'spotsUsed', 'spotsTotal',
+                          'selectedSolutionNumber',
+                          'selectedSolutionSpaceGroup',
+                          'selectedSolutionSpaceGroupNumber',
+                          'indexingSolution']:
+            self.assertTrue(parameter in outData, parameter)
+
+    def test_generateMOSFLMCommands_generatePrediction(self):
+        tempdir = tempfile.mkdtemp(prefix='generateMOSFLMCommands_' +
+                                          'generatePrediction_test_')
+        tmpWorkingDir = pathlib.Path(tempdir)
+        referenceDataPath = self.dataPath / 'inDataGeneratePrediction.json'
+        inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
+        task = MosflmGeneratePredictionTask(inData)
+        listCommands = task.generateMOSFLMCommands(inData, tmpWorkingDir)
+        for command in ['WAVELENGTH 0.8729', 'DISTANCE 305.222',
+                        'BEAM 113.5544 112.2936',
+                        'TEMPLATE ref-2m_RNASE_1_####.cbf', 'SYMMETRY P1',
+                        'EXIT']:
+            self.assertTrue(command in listCommands, command)
+        shutil.rmtree(tempdir)
+
+
 
 

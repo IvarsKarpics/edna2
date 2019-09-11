@@ -23,18 +23,16 @@ __authors__ = ["O. Svensson"]
 __license__ = "MIT"
 __date__ = "21/04/2019"
 
-import os
-import logging
 import unittest
 
-from utils import UtilsTest
-from utils import UtilsConfig
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
 
-from tasks.CCP4Tasks import PointlessTask
+from edna2.tasks.CCP4Tasks import PointlessTask
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+from edna2.utils import UtilsLogging
+
+logger = UtilsLogging.getLogger()
 
 
 class PointlessTasksExecTest(unittest.TestCase):
@@ -42,7 +40,8 @@ class PointlessTasksExecTest(unittest.TestCase):
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run pointless test with default config')
     def test_execute_PointlessTask(self):
         referenceDataPath = self.dataPath / 'inDataPointlessTask.json'
         tmpDir = UtilsTest.createTestTmpDirectory('PointlessTask')
@@ -50,6 +49,6 @@ class PointlessTasksExecTest(unittest.TestCase):
                                                     tmpDir=tmpDir)
         task = PointlessTask(inData=inData)
         task.execute()
-        assert not task.isFailure()
+        self.assertTrue(task.isSuccess())
         outData = task.outData
-        assert outData['isSuccess']
+        self.assertTrue(outData['isSuccess'])

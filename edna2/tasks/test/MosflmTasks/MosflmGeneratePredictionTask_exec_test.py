@@ -1,3 +1,4 @@
+#
 # Copyright (c) European Synchrotron Radiation Facility (ESRF)
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -16,36 +17,35 @@
 # COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
 
-import os
+__authors__ = ["O. Svensson"]
+__license__ = "MIT"
+__date__ = "14/05/2019"
+
 import unittest
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-from tasks.ISPyBTasks import ISPyBRetrieveDataCollection
+from edna2.tasks.MosflmTasks import MosflmGeneratePredictionTask
+
+logger = UtilsLogging.getLogger()
 
 
-class ISPyBRetrieveDataCollectionExecTest(unittest.TestCase):
+class MosflmTasksExecTest(unittest.TestCase):
 
     def setUp(self):
-        os.environ['EDNA2_SITE'] = 'esrf_id30a2'
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    def test_execute_ISPyBRetrieveDataCollection_image(self):
-        referenceDataPath = self.dataPath / \
-            "ISPyBRetrieveDataCollection_image.json"
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run mosflm test with default config')
+    def test_execute_MosflmGeneratePredictionTask(self):
+        UtilsTest.loadTestImage('ref-2m_RNASE_1_0001.cbf')
+        UtilsTest.loadTestImage('ref-2m_RNASE_1_0002.cbf')
+        referenceDataPath = self.dataPath / 'inDataGeneratePrediction.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
-        iSPyBRetrieveDataCollection = ISPyBRetrieveDataCollection(inData=inData)
-        iSPyBRetrieveDataCollection.execute()
-        outData = iSPyBRetrieveDataCollection.outData
-        self.assertEqual(outData['imagePrefix'], 'ref-ednatest')
-
-    def test_execute_ISPyBRetrieveDataCollection_dataCollectionId(self):
-        referenceDataPath = self.dataPath / \
-            "ISPyBRetrieveDataCollection_dataCollectionId.json"
-        inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
-        iSPyBRetrieveDataCollection = ISPyBRetrieveDataCollection(inData=inData)
-        iSPyBRetrieveDataCollection.execute()
-        outData = iSPyBRetrieveDataCollection.outData
-        self.assertEqual(outData['imagePrefix'], 'ref-ednatest')
-
+        mosflmIndexingTask = MosflmGeneratePredictionTask(inData=inData)
+        mosflmIndexingTask.execute()
+        self.assertTrue(mosflmIndexingTask.isSuccess())

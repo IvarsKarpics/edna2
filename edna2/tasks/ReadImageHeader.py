@@ -29,17 +29,15 @@ __date__ = "21/04/2019"
 #      EDPluginControlReadImageHeaderv10.py
 
 import os
-import sys
-import json
-import logging
 
-from tasks.AbstractTask import AbstractTask
-from tasks.WaitFileTask import WaitFileTask
+from edna2.utils import UtilsLogging
 
-from utils import UtilsPath
-from utils import UtilsImage
+from edna2.tasks.AbstractTask import AbstractTask
+from edna2.tasks.WaitFileTask import WaitFileTask
 
-logger = logging.getLogger('edna2')
+from edna2.utils import UtilsImage
+
+logger = UtilsLogging.getLogger()
 
 # Constants
 
@@ -115,7 +113,8 @@ class ReadImageHeader(AbstractTask):
                                            detectorName, detectorType)
         return outData
 
-    def readCBFHeader(self, filePath):
+    @classmethod
+    def readCBFHeader(cls, filePath):
         """
         Returns an dictionary with the contents of a CBF image header.
         """
@@ -144,7 +143,8 @@ class ReadImageHeader(AbstractTask):
                         dictHeader[strKey] = strValue
         return dictHeader
 
-    def createCBFHeaderData(self, imagePath, dictHeader,
+    @classmethod
+    def createCBFHeaderData(cls, imagePath, dictHeader,
                             numberPixelX, numberPixelY,
                             detectorName, detectorType):
         experimentalCondition = {}

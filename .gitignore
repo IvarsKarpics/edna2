@@ -1,8 +1,10 @@
 .project
 .pydevproject
 .settings
+venv/
 *.pyc
-testdata
-.idea
+testdata/
+.idea/
 docs/build
-
+edna2/lib/autocryst/ext/build
+*.so

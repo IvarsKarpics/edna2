@@ -18,24 +18,20 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
-from _json import make_encoder
 
 __authors__ = ["O. Svensson"]
 __license__ = "MIT"
 __date__ = "14/05/2019"
 
-import os
-import pprint
-import logging
 import unittest
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-from tasks.MosflmTasks import MosflmIndexingTask
+from edna2.tasks.MosflmTasks import MosflmIndexingTask
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+logger = UtilsLogging.getLogger()
 
 
 class MosflmTasksExecTest(unittest.TestCase):
@@ -43,7 +39,8 @@ class MosflmTasksExecTest(unittest.TestCase):
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run mosflm test with default config')
     def test_execute_MosflmIndexingTask(self):
         UtilsTest.loadTestImage('ref-2m_RNASE_1_0001.cbf')
         UtilsTest.loadTestImage('ref-2m_RNASE_1_0002.cbf')
@@ -51,4 +48,4 @@ class MosflmTasksExecTest(unittest.TestCase):
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         mosflmIndexingTask = MosflmIndexingTask(inData=inData)
         mosflmIndexingTask.execute()
-        assert mosflmIndexingTask.isSuccess()
+        self.assertTrue(mosflmIndexingTask.isSuccess())

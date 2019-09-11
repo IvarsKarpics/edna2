@@ -26,9 +26,10 @@ __date__ = "21/04/2019"
 import os
 import unittest
 
-from tasks.H5ToCBFTask import H5ToCBFTask
+from edna2.tasks.H5ToCBFTask import H5ToCBFTask
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
 
 
 class H5ToCBFExecTest(unittest.TestCase):
@@ -38,25 +39,27 @@ class H5ToCBFExecTest(unittest.TestCase):
         UtilsTest.loadTestImage('Trx6_19_1_1_master.h5')
         UtilsTest.loadTestImage('Trx6_19_1_1_data_000001.h5')
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run h5ToCbf test with default config')
     def test_execute_withImageNumber(self):
         referenceDataPath = self.dataPath / 'H5ToCBF_withImageNumber.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath,
                                                     loadTestImages=False)
         h5ToCBF = H5ToCBFTask(inData=inData)
         h5ToCBF.execute()
-        assert h5ToCBF.isSuccess()
+        self.assertTrue(h5ToCBF.isSuccess())
         outData = h5ToCBF.outData
         self.assertTrue(os.path.exists(outData['outputCBFFile']))
 
-    @unittest.skipIf(os.name == 'nt', "Don't run on Windows")
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run h5ToCbf test with default config')
     def test_execute_withImageRange(self):
         referenceDataPath = self.dataPath / 'H5ToCBF_withImageRange.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath,
                                                     loadTestImages=False)
         h5ToCBF = H5ToCBFTask(inData=inData)
         h5ToCBF.execute()
-        assert h5ToCBF.isSuccess()
+        self.assertTrue(h5ToCBF.isSuccess())
         outData = h5ToCBF.outData
         for index in range(1,11):
             template = outData['outputCBFFileTemplate']

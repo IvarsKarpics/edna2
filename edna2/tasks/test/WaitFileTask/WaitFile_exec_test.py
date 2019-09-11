@@ -23,15 +23,14 @@ __authors__ = ["O. Svensson"]
 __license__ = "MIT"
 __date__ = "21/04/2019"
 
-import logging
 import unittest
 
-from utils import UtilsTest
-from tasks.WaitFileTask import WaitFileTask
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsLogging
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+from edna2.tasks.WaitFileTask import WaitFileTask
+
+logger = UtilsLogging.getLogger()
 
 
 class MXWaitFileExecTest(unittest.TestCase):
@@ -46,5 +45,5 @@ class MXWaitFileExecTest(unittest.TestCase):
         waitFile.execute()
         outData = waitFile.outData
         logger.info(outData)
-        assert not outData['timedOut']
-        assert outData['finalSize'] == 8389120
+        self.assertFalse(outData['timedOut'])
+        self.assertEqual(outData['finalSize'], 8389120)

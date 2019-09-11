@@ -25,14 +25,13 @@ __date__ = '21/04/2019'
 
 import os
 import json
-import pprint
 import shutil
 import unittest
 import tempfile
-        
-from tasks.DozorTasks import ExecDozor
 
-from utils import UtilsTest
+from edna2.tasks.DozorTasks import ExecDozor
+
+from edna2.utils import UtilsTest
 
 
 class ExecDozorUnitTest(unittest.TestCase):
@@ -58,38 +57,31 @@ class ExecDozorUnitTest(unittest.TestCase):
         logFileName = self.dataPath / 'Dozor_v2.0.2.log'
         with open(str(logFileName)) as f:
             output = f.read()
-        inData = {
-            'startingAngle': 0.0,
-            'firstImageNumber': 1,
-            'oscillationRange': 1.0
-        }
-        result = self.dozor.parseOutput(inData, output)
+        result = self.dozor.parseOutput(self.inData, output)
         self.assertEqual(10,
-                         len(result['imageDozor']), 
+                         len(result['imageDozor']),
                          "Result from 10 images")
-        # pprint.pprint(result)
         # Log file with 'no results'
         logFileName2 = self.dataPath / 'Dozor_v2.0.2_no_results.log'
         with open(str(logFileName2)) as f:
             output2 = f.read()
-        result2 = self.dozor.parseOutput(inData, output2)
-        # pprint.pprint(result2)
+        result2 = self.dozor.parseOutput(self.inData, output2)
         self.assertEqual(51,
                          len(result2['imageDozor']),
                          "Result from 51 images")
 
     def test_parseDouble(self):
-        self.assertEqual(1.0, 
-                         self.dozor.parseDouble('1.0'), 
+        self.assertEqual(1.0,
+                         ExecDozor.parseDouble('1.0'),
                          "Parsing '1.0'")
-        self.assertEqual(None, 
-                         self.dozor.parseDouble('****'), 
+        self.assertEqual(None,
+                         ExecDozor.parseDouble('****'),
                          "Parsing '****'")
 
     def test_generatePngPlots(self):
         plotmtvFile = self.dataPath / 'dozor_rd.mtv'
         tmpDir = tempfile.mkdtemp(suffix='EDTestCasePluginUnitDozor_')
-        listFile = self.dozor.generatePngPlots(plotmtvFile, tmpDir)
+        listFile = ExecDozor.generatePngPlots(plotmtvFile, tmpDir)
         for plotFile in listFile:
             self.assertTrue(os.path.exists(plotFile))
         shutil.rmtree(tmpDir)

@@ -30,14 +30,13 @@ __date__ = "10/05/2019"
 
 import os
 import re
-import logging
 
-from tasks.AbstractTask import AbstractTask
+from edna2.tasks.AbstractTask import AbstractTask
 
-from utils import UtilsPath
-from utils import UtilsConfig
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-logger = logging.getLogger('edna2')
+logger = UtilsLogging.getLogger()
 
 
 class AimlessTask(AbstractTask):
@@ -104,11 +103,10 @@ class PointlessTask(AbstractTask):
         outData = self.parsePointlessOutput(self.getLogPath())
         return outData
 
-    def parsePointlessOutput(self, logPath):
+    @classmethod
+    def parsePointlessOutput(cls, logPath):
         sgre = re.compile(""" \* Space group = '(?P<sgstr>.*)' \(number\s+(?P<sgnumber>\d+)\)""")
-        sgnumber = sgstr = None
-        outData = {}
-        outData['isSuccess'] = False
+        outData = {'isSuccess': False}
         if logPath.exists():
             with open(str(logPath)) as f:
                 log = f.read()

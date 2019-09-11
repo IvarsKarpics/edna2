@@ -1,4 +1,3 @@
-#
 # Copyright (c) European Synchrotron Radiation Facility (ESRF)
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -17,43 +16,36 @@
 # COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-#
 
 __authors__ = ["O. Svensson"]
 __license__ = "MIT"
-__date__ = "21/04/2019"
+__date__ = "05/09/2019"
 
-import logging
+import os
 import unittest
 
-from utils import UtilsTest
+from edna2.utils import UtilsTest
+from edna2.utils import UtilsConfig
 
-from tasks.ImageQualityIndicatorsTask import ImageQualityIndicatorsTask
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('edna2')
-logger.setLevel(logging.DEBUG)
+from edna2.tasks.ISPyBTasks import GetListAutoprocIntegration
 
 
-class ImageQualityIndicatorsExecTest(unittest.TestCase):
+class GetListAutoprocIntegrationExecTest(unittest.TestCase):
 
     def setUp(self):
         self.dataPath = UtilsTest.prepareTestDataPath(__file__)
 
-    def tes_execute_listOfImages(self):
-        referenceDataPath = self.dataPath / 'inData_listOfImages.json'
+    @unittest.skipIf(UtilsConfig.getSite() == 'Default',
+                     'Cannot run ispyb test with default config')
+    @unittest.skipIf('ISPyB_token' not in os.environ,
+                     'No ISPyB_token found in environment')
+    def test_execute_getListAutoprocIntegration(self):
+        referenceDataPath = self.dataPath / \
+            "GetListAutoprocIntegration.json"
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
-        task = ImageQualityIndicatorsTask(inData=inData)
-        task.execute()
-        assert not task.isFailure()
-        outData = task.outData
-        assert 'imageQualityIndicators' in outData
+        getListAutoprocIntegration = GetListAutoprocIntegration(inData=inData)
+        getListAutoprocIntegration.execute()
+        self.assertTrue(getListAutoprocIntegration.isSuccess())
+        outData = getListAutoprocIntegration.outData
+        self.assertEqual(21, len(outData))
 
-    def test_execute_startEnd(self):
-        referenceDataPath = self.dataPath / 'inData_startEnd.json'
-        inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
-        task = ImageQualityIndicatorsTask(inData=inData)
-        task.execute()
-        assert not task.isFailure()
-        outData = task.outData
-        assert 'imageQualityIndicators' in outData

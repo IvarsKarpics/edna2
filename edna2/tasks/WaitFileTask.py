@@ -29,16 +29,14 @@ __date__ = "21/04/2019"
 
 import os
 import time
-import pprint
-import logging
 import pathlib
 
-from tasks.AbstractTask import AbstractTask
+from edna2.tasks.AbstractTask import AbstractTask
 
-from utils import UtilsPath
-from utils import UtilsConfig
+from edna2.utils import UtilsConfig
+from edna2.utils import UtilsLogging
 
-logger = logging.getLogger('edna2')
+logger = UtilsLogging.getLogger()
 
 DEFAULT_TIMEOUT = 120 # s
 
