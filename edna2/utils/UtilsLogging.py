@@ -41,7 +41,7 @@ def getLogger(level=None):
     hasStreamHandler = False
     hasFileHandler = False
     for handler in logger.handlers:
-        if isinstance(handler, graypy.GELFHTTPHandler):
+        if isinstance(handler, graypy.GELFUDPHandler):
             hasGraylogHandler = True
         elif isinstance(handler, logging.handlers.RotatingFileHandler):
             hasFileHandler = True
@@ -51,7 +51,7 @@ def getLogger(level=None):
         server = UtilsConfig.get('Logging', 'graylog_server')
         port = UtilsConfig.get('Logging', 'graylog_port')
         if server is not None and port is not None:
-            graylogHandler = graypy.GELFHTTPHandler(server, port)
+            graylogHandler = graypy.GELFUDPHandler(server, int(port))
             logger.addHandler(graylogHandler)
     if not hasStreamHandler:
         streamHandler = logging.StreamHandler()

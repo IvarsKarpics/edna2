@@ -33,6 +33,7 @@ from suds.client import Client
 from suds.transport.http import HttpAuthenticated
 
 import os
+import gzip
 import pathlib
 
 from edna2.utils import UtilsConfig
@@ -88,16 +89,16 @@ class GetListAutoprocIntegration(AbstractTask):
             }
         }
 
-    def getOutDataSchema(self):
-        return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "AutoProcIntegration_autoProcIntegrationId": {"type": "integer"}
-                }
-            }
-        }
+    # def getOutDataSchema(self):
+    #     return {
+    #         "type": "array",
+    #         "items": {
+    #             "type": "object",
+    #             "properties": {
+    #                 "AutoProcIntegration_autoProcIntegrationId": {"type": "integer"}
+    #             }
+    #         }
+    #     }
 
     def run(self, inData):
         # urlExtISPyB, token, proposal, dataCollectionId
@@ -110,7 +111,12 @@ class GetListAutoprocIntegration(AbstractTask):
             restUrl, token, 'proposal', str(proposal), 'mx',
             'autoprocintegration', 'datacollection', str(dataCollectionId),
             'view')
-        outData = UtilsIspyb.getJsonFromURL(ispybWebServiceURL)
+        dataFromUrl = UtilsIspyb.getDataFromURL(ispybWebServiceURL)
+        outData = {}
+        if dataFromUrl['statusCode'] == 200:
+            outData['autoprocIntegration'] = dataFromUrl['data']
+        else:
+            outData['error'] = dataFromUrl
         return outData
 
 
@@ -126,16 +132,16 @@ class GetListAutoprocAttachment(AbstractTask):
             }
         }
 
-    def getOutDataSchema(self):
-        return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "AutoProcIntegration_autoProcIntegrationId": {"type": "integer"}
-                }
-            }
-        }
+    # def getOutDataSchema(self):
+    #     return {
+    #         "type": "array",
+    #         "items": {
+    #             "type": "object",
+    #             "properties": {
+    #                 "AutoProcIntegration_autoProcIntegrationId": {"type": "integer"}
+    #             }
+    #         }
+    #     }
 
     def run(self, inData):
         # urlExtISPyB, token, proposal, autoProcProgramId
@@ -148,5 +154,210 @@ class GetListAutoprocAttachment(AbstractTask):
             restUrl, token, 'proposal', str(proposal), 'mx',
             'autoprocintegration', 'attachment', 'autoprocprogramid',
             str(autoProcProgramId), 'list')
-        outData = UtilsIspyb.getJsonFromURL(ispybWebServiceURL)
+        dataFromUrl = UtilsIspyb.getDataFromURL(ispybWebServiceURL)
+        outData = {}
+        if dataFromUrl['statusCode'] == 200:
+            outData['autoprocAttachment'] = dataFromUrl['data']
+        else:
+            outData['error'] = dataFromUrl
+        return outData
+
+
+class GetListAutoprocessingResults(AbstractTask):
+    """
+    This task receives a list of data collection IDs and returns a list
+    of dictionaries with all the auto-processing results and file attachments
+    """
+
+    def getInDataSchema(self):
+        return {
+            "type": "object",
+            "properties": {
+                "token": {"type": "string"},
+                "proposal": {"type": "string"},
+                "dataCollectionId": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer",
+                    }
+                }
+            }
+        }
+
+    # def getOutDataSchema(self):
+    #     return {
+    #         "type": "object",
+    #         "required": ["dataForMerge"],
+    #         "properties": {
+    #             "dataForMerge": {
+    #                 "type": "object",
+    #                 "items": {
+    #                     "type": "object",
+    #                     "properties": {
+    #                         "spaceGroup": {"type": "string"}
+    #                     }
+    #                 }
+    #             }
+    #         }
+    #     }
+
+    def run(self, inData):
+        urlError = None
+        token = inData['token']
+        proposal = inData['proposal']
+        listDataCollectionId = inData['dataCollectionId']
+        dictForMerge = {}
+        dictForMerge['dataCollection'] = []
+        for dataCollectionId in listDataCollectionId:
+            dictDataCollection = {
+                'dataCollectionId': dataCollectionId
+            }
+            inDataGetListIntegration = {
+                'token': token,
+                'proposal': proposal,
+                'dataCollectionId': dataCollectionId
+            }
+            getListAutoprocIntegration = GetListAutoprocIntegration(
+                inData=inDataGetListIntegration
+            )
+            getListAutoprocIntegration.setPersistInOutData(False)
+            getListAutoprocIntegration.execute()
+            resultAutoprocIntegration = getListAutoprocIntegration.outData
+            if 'error' in resultAutoprocIntegration:
+                urlError = resultAutoprocIntegration['error']
+                break
+            else:
+                listAutoprocIntegration = resultAutoprocIntegration['autoprocIntegration']
+                # Get v_datacollection_summary_phasing_autoProcProgramId
+                for autoprocIntegration in listAutoprocIntegration:
+                    if 'v_datacollection_summary_phasing_autoProcProgramId' in autoprocIntegration:
+                        autoProcProgramId = autoprocIntegration[
+                            'v_datacollection_summary_phasing_autoProcProgramId'
+                        ]
+                        inDataGetListAttachment = {
+                            'token': token,
+                            'proposal': proposal,
+                            'autoProcProgramId': autoProcProgramId
+                        }
+                        getListAutoprocAttachment = GetListAutoprocAttachment(
+                            inData=inDataGetListAttachment
+                        )
+                        getListAutoprocAttachment.setPersistInOutData(False)
+                        getListAutoprocAttachment.execute()
+                        resultAutoprocAttachment = getListAutoprocAttachment.outData
+                        if 'error' in resultAutoprocAttachment:
+                            urlError = resultAutoprocAttachment['error']
+                        else:
+                            autoprocIntegration['autoprocAttachment'] = resultAutoprocAttachment['autoprocAttachment']
+                    dictDataCollection['autoprocIntegration'] = listAutoprocIntegration
+            dictForMerge['dataCollection'].append(dictDataCollection)
+            # dictForMerge[dataCollectionId] = dictDataCollection
+        if urlError is None:
+            outData = dictForMerge
+        else:
+            outData = {
+                'error': urlError
+            }
+        return outData
+
+
+class RetrieveAttachmentFiles(AbstractTask):
+    """
+    This task receives a list of data collection IDs and returns a list
+    of dictionaries with all the auto-processing results and file attachments
+    """
+
+    # def getInDataSchema(self):
+    #     return {
+    #         "type": "object",
+    #         "properties": {
+    #             "token": {"type": "string"},
+    #             "proposal": {"type": "string"},
+    #             "dataCollectionId": {
+    #                 "type": "array",
+    #                 "items": {
+    #                     "type": "integer",
+    #                 }
+    #             }
+    #         }
+    #     }
+
+    # def getOutDataSchema(self):
+    #     return {
+    #         "type": "object",
+    #         "required": ["dataForMerge"],
+    #         "properties": {
+    #             "dataForMerge": {
+    #                 "type": "object",
+    #                 "items": {
+    #                     "type": "object",
+    #                     "properties": {
+    #                         "spaceGroup": {"type": "string"}
+    #                     }
+    #                 }
+    #             }
+    #         }
+    #     }
+
+    def run(self, inData):
+        urlError = None
+        listPath = []
+        token = inData['token']
+        proposal = inData['proposal']
+        listAttachment = inData['attachment']
+        dictConfig = UtilsConfig.getTaskConfig('ISPyB')
+        restUrl = dictConfig['ispyb_ws_url'] + '/rest'
+        # proposal/MX2112/mx/autoprocintegration/autoprocattachmentid/21494689/get
+        for dictAttachment in listAttachment:
+            attachmentId = dictAttachment['id']
+            fileName = dictAttachment['fileName']
+            ispybWebServiceURL = os.path.join(
+                restUrl, token, 'proposal', str(proposal), 'mx',
+                'autoprocintegration', 'autoprocattachmentid', str(attachmentId),
+                'get')
+            rawDataFromUrl = UtilsIspyb.getRawDataFromURL(ispybWebServiceURL)
+            if rawDataFromUrl['statusCode'] == 200:
+                rawData = rawDataFromUrl['content']
+                if fileName.endswith('.gz'):
+                    rawData = gzip.decompress(rawData)
+                    fileName = fileName.split('.gz')[0]
+                with open(fileName, "wb") as f:
+                    f.write(rawData)
+                listPath.append(str(self.getWorkingDirectory() / fileName))
+            else:
+                urlError = rawDataFromUrl
+        if urlError is None:
+            outData = {
+                'filePath': listPath
+            }
+        else:
+            outData = {
+                'error': urlError
+            }
+        return outData
+
+
+class ISPyBFindDetectorByParam(AbstractTask):
+
+    def run(self, inData):
+        dictConfig = UtilsConfig.getTaskConfig('ISPyB')
+        username = dictConfig['username']
+        password = dictConfig['password']
+        httpAuthenticated = HttpAuthenticated(username=username,
+                                              password=password)
+        wdsl = dictConfig['ispyb_ws_url'] + '/ispybWS/ToolsForCollectionWebService?wsdl'
+        client = Client(wdsl, transport=httpAuthenticated, cache=None)
+        manufacturer = inData['manufacturer']
+        model = inData['model']
+        mode = inData['mode']
+        detector = client.service.findDetectorByParam(
+            "",
+            manufacturer,
+            model,
+            mode
+        )
+        if detector is not None:
+            outData = Client.dict(detector)
+        else:
+            outData = {}
         return outData

@@ -47,5 +47,5 @@ class GetListAutoprocAttachmentExecTest(unittest.TestCase):
         getListAutoprocAttachment.execute()
         self.assertTrue(getListAutoprocAttachment.isSuccess())
         outData = getListAutoprocAttachment.outData
-        self.assertEqual(4, len(outData))
+        self.assertEqual(4, len(outData['autoprocAttachment']))
 

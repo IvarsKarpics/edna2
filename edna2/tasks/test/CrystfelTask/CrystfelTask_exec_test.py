@@ -22,6 +22,7 @@
 __authors__ = ["O. Svensson", "S.Basu"]
 __license__ = "MIT"
 __date__ = "12/07/2019"
+__commandtoRun__ = "python -m unittest edna2.tasks.test.CrystfelTask.CrystfelTask_exec_test"
 
 import unittest
 
@@ -48,13 +49,12 @@ class CrystfelTaskExecTest(unittest.TestCase):
     @unittest.skipIf(UtilsConfig.getSite() == 'Default',
                      'Cannot run ImageQualityIndicatorsExecTest ' +
                      'test with default config')
-    def test_execute_listOfImages(self):
-        referenceDataPath = self.dataPath / 'inData_pilatus2m_10images.json'
+    def tes_execute_listOfImages(self):
+        referenceDataPath = self.dataPath / 'pilatus2m_listimages.json'
         inData = UtilsTest.loadAndSubstitueTestData(referenceDataPath)
         task = ExeCrystFEL(inData=inData)
         task.execute()
         self.assertFalse(task.isFailure())
         outData = task.outData
-        self.assertTrue('QualityMetrics' in outData)
-        self.assertTrue('resolution_limit' in outData['QualityMetrics'])
+        self.assertTrue('streamfile' in outData)
         return

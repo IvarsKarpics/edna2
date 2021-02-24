@@ -121,8 +121,19 @@ class AutoCrystFEL(object):
                 "detectorType": {"type": "string"},
                 "suffix": {"type": "string"},
                 "prefix": {"type": "string"},
+                "ImageRange": {"type": "array",
+                               "items": {
+                                   "type": "integer"
+                                    }
+                               },
+                "listofImages": {"type": "array",
+                                 "items": {
+                                     "type": "string"
+                                      }
+                                 },
                 "maxchunksize": {"type": "integer"},
                 "processing_directory": {"type": "string"},
+                "doSubmit": {"type": "boolean"},
                 "doMerging": {"type": "boolean"},
                 "GeneratePeaklist": {"type": "boolean"},
                 "geometry_file": {"type": "string"},
@@ -140,7 +151,8 @@ class AutoCrystFEL(object):
                 "threshold": {"type": "string"},
                 "local_bg_radius": {"type": "string"},
                 "min_res": {"type": "string"},
-                "highres": {"type": "string"}
+                "highres": {"type": "string"},
+                "wait_time": {"type": "string"}
             },
         }
 
@@ -225,7 +237,7 @@ class AutoCrystFEL(object):
         slurm_handle.close()
         sub.call('chmod +x %s' % shellfile, shell=True)
 
-        AutoCrystFEL.run_as_command('sbatch -p mx -J autoCryst %s' % shellfile)
+        AutoCrystFEL.run_as_command('sbatch -p grid -J autoCryst %s' % shellfile)
         return
 
     @staticmethod
@@ -235,7 +247,7 @@ class AutoCrystFEL(object):
         slurm_handle.write("cat *.stream >> alltogether.stream")
         slurm_handle.close()
         AutoCrystFEL.run_as_command('chmod +x tmp_cat.sh')
-        AutoCrystFEL.run_as_command('sbatch -d singleton -J autoCryst -t 1:00 tmp_cat.sh')
+        AutoCrystFEL.run_as_command('sbatch --wait -d singleton -p grid -J autoCryst tmp_cat.sh')
         return
 
     @staticmethod
@@ -293,13 +305,23 @@ class AutoCrystFEL(object):
 
     def datafinder(self):
         datadir = pathlib.Path(self.jshandle['image_directory'])
+        listofimagefiles = self.jshandle.get('listofImages', [])
+        image_range = self.jshandle.get('ImageRange', ())
         if datadir.exists():
-            listofimagefiles = list(datadir.glob(self.jshandle['prefix'] + '*' + self.jshandle['suffix']))
-            for fname in listofimagefiles:
-                if 'master' not in str(fname):
-                    self.filelist.append(fname.as_posix())
-                else:
-                    pass
+            if len(image_range) > 0:
+                for index in range(image_range[0], image_range[1]+1):
+                    imageName = self.jshandle['prefix'] + '{0:04d}'.format(index) + '.' + self.jshandle['suffix']
+                    imagePath = datadir / imageName
+                    self.filelist.append(imagePath.as_posix())
+            elif len(listofimagefiles) != 0:
+                self.filelist = listofimagefiles
+            else:
+                listofimagefiles = list(datadir.glob(self.jshandle['prefix'] + '*' + self.jshandle['suffix']))
+                for fname in listofimagefiles:
+                    if 'master' not in str(fname):
+                        self.filelist.append(fname.as_posix())
+                    else:
+                        pass
         else:
             self.setFailure()
             logger.error('dataError:{}'.format('no data found'))
@@ -322,9 +344,9 @@ class AutoCrystFEL(object):
         geomfile = self.jshandle.get('geometry_file', None)
         if geomfile is None:
             image1 = type('', (), {})  # initialize image1 as an empty object
-            if self.jshandle['detectorType'] == 'pilatus2m' or self.jshandle['detectorType'] == 'pilatus6m':
+            if self.jshandle['suffix'] == 'cbf':
                 image1 = Im(self.filelist[0])
-            elif self.jshandle['detectorType'] == 'eiger4m':
+            elif self.jshandle['suffix'] == 'h5':
                 master_str = self.jshandle['prefix'] + '*master.h5'
                 masterfile = list(pathlib.Path(self.jshandle['image_directory']).glob(master_str))[0]
                 image1 = Im(str(masterfile))
@@ -369,15 +391,16 @@ class AutoCrystFEL(object):
         unitcell = self.jshandle.get('unit_cell_file', None)
         indexing_method = self.jshandle.get('indexing_method', 'mosflm')
         peak_search = self.jshandle.get('peak_search', 'peakfinder8')
-        int_method = self.jshandle.get('int_method', 'rings-cen-rescut')
+        int_method = self.jshandle.get('int_method', 'rings-grad-rescut')
         int_radius = self.jshandle.get('int_radius', '3,4,6')
         highres = self.jshandle.get('highres', '0.0')
         nproc = self.jshandle.get('num_processors', '20')
+        waiting = self.jshandle.get('wait_time', '0')
 
         if self.is_executable('indexamajig'):
             command = 'indexamajig -i %s -o %s -g %s' \
                       % (infile, streamfile, geometryfile)
-            command += ' --indexing=%s --multi --no-cell-combinations --peaks=%s' \
+            command += ' --indexing=%s --no-cell-combinations --peaks=%s' \
                        % (indexing_method, peak_search)
             command += ' --integration=%s --int-radius=%s -j %s --no-check-peaks --highres=%s' \
                        % (int_method, int_radius, nproc, highres)
@@ -397,8 +420,8 @@ class AutoCrystFEL(object):
                 min_res = self.jshandle.get('min_res', '50')
                 threshold = self.jshandle.get('threshold', '10')
 
-                command += ' --peak-radius=%s --min-peaks=%s' \
-                           % (peak_radius, min_peaks)
+                command += ' --peak-radius=%s --min-peaks=%s --wait-for-file=%s' \
+                           % (peak_radius, min_peaks, waiting)
                 command += ' --min-snr=%s --threshold=%s --local-bg-radius=%s --min-res=%s' \
                            % (min_snr, threshold, local_bg_radius, min_res)
                 command += ' --no-non-hits-in-stream'
@@ -444,9 +467,11 @@ class AutoCrystFEL(object):
 
             if self.is_success():
                 statparser = ResultParser()
-                for statfile, fom in zip([snrfile, ccfile, rsplitfile], ['snr', 'ccstar', 'rsplit']):
+                for statfile, fom in zip([ccfile, rsplitfile, snrfile], ['ccstar', 'rsplit', 'snr']):
                     statparser.getstats(statfile, fom=fom)
                     stat[fom] = statparser.results['DataQuality']
+                    stat['overall_' + fom] = statparser.results.get('overall_' + fom, 0.0)
+                    stat['overall_multiplicity'] = statparser.results.get('overall_multiplicity', 0.0)
             else:
                 logger.error('Merging did not run')
 
@@ -471,20 +496,13 @@ class AutoCrystFEL(object):
             self.make_list_events(str(geomfile))
 
             maxchunksize = self.jshandle.get('maxchunksize', 10)
-            if len(self.filelist) <= maxchunksize:
-                infile = str(self.getOutputDirectory() / 'input.lst')
-                outname = datetime.now().strftime('%H-%M-%S.stream')
-                outstream = str(self.getOutputDirectory() / outname)
+            doSubmit = self.jshandle.get('doSubmit', True)
 
-                ofh = open(infile, 'w')
-                for fname in self.filelist:
-                    ofh.write(fname)
-                    ofh.write('\n')
-                ofh.close()
-
-                self.run_as_command(self.indexamajig_cmd(infile, outstream, str(geomfile)))
-            elif len(self.filelist) > maxchunksize:
-                file_chunk = int(len(self.filelist) / maxchunksize) + 1
+            if doSubmit:
+                if len(self.filelist) % maxchunksize == 0:
+                    file_chunk = int(len(self.filelist) / maxchunksize)
+                else:
+                    file_chunk = int(len(self.filelist) / maxchunksize) + 1
                 for jj in range(file_chunk):
                     start = maxchunksize * jj
                     stop = maxchunksize * (jj + 1)
@@ -509,7 +527,21 @@ class AutoCrystFEL(object):
                     elif self.is_executable('sbatch'):
                         self.slurm_submit(shellfile, self.indexamajig_cmd(infile, outstream, str(geomfile)))
                     else:
-                        self.run_as_command(self.indexamajig_cmd(infile, outstream, str(geomfile)))
+                        error_message = "doSubmit was set True but queue system is unavailable in running node; " \
+                                        "please change doSubmit to False"
+                        logger.error(error_message)
+            else:
+                infile = str(self.getOutputDirectory() / 'input.lst')
+                outname = datetime.now().strftime('%H-%M-%S.stream')
+                outstream = str(self.getOutputDirectory() / outname)
+
+                ofh = open(infile, 'w')
+                for fname in self.filelist:
+                    ofh.write(fname)
+                    ofh.write('\n')
+                ofh.close()
+
+                self.run_as_command(self.indexamajig_cmd(infile, outstream, str(geomfile)))
 
         except Exception as err:
             self.setFailure()
@@ -533,16 +565,17 @@ class AutoCrystFEL(object):
                 break
             else:
                 pass
-        '''
+
         if self.is_success():
             cmd = 'cat *.stream >> alltogether.stream'
             self.run_as_command(cmd)
         else:
             pass
-        '''
+
         return
 
-    def report_cell(self, streampath):
+    @staticmethod
+    def report_cell(streampath):
         # cellobject = type('', (), {})  # c is a Cell type which is initialized as None type for python 2.7.
         results = dict()
         if os.path.exists(streampath):
@@ -552,18 +585,25 @@ class AutoCrystFEL(object):
             results['cellobject'] = cellobject
             try:
                 results['centering'] = cellobject.most_common_centering
-                lat, ua, cell_list = lattice_from_cell([cellobject.a_mode, cellobject.b_mode,
-                                                        cellobject.c_mode, cellobject.al_mode,
-                                                        cellobject.be_mode, cellobject.ga_mode])
-
                 results['num_indexed_frames'] = cellobject.cell_array.shape[0]
+                if cellobject.most_common_lattice_type == 'triclinic':
+                    lat, ua, cell_list = lattice_from_cell([cellobject.a_mode, cellobject.b_mode,
+                                                            cellobject.c_mode, cellobject.al_mode,
+                                                            cellobject.be_mode, cellobject.ga_mode])
 
-                assert isinstance(lat, str)
-                results['lattice'] = lat
-                assert isinstance(ua, str)
-                results['unique_axis'] = ua
-                assert isinstance(cell_list, list)
-                results['unit_cell'] = cell_list
+                    assert isinstance(lat, str)
+                    results['lattice'] = lat
+                    assert isinstance(ua, str)
+                    results['unique_axis'] = ua
+                    assert isinstance(cell_list, list)
+                    results['unit_cell'] = cell_list
+                else:
+                    results['lattice'] = cellobject.most_common_lattice_type
+                    results['unique_axis'] = cellobject.most_common_unique_axis
+                    results['unit_cell'] = [cellobject.a_mode, cellobject.b_mode,
+                                            cellobject.c_mode, cellobject.al_mode,
+                                            cellobject.be_mode, cellobject.ga_mode]
+
                 pg, sg_str, sg_num = assign_point_group(results['lattice'], results['centering'],
                                                         results['unique_axis'])
                 assert isinstance(pg, str)
@@ -572,17 +612,17 @@ class AutoCrystFEL(object):
                 results['space_group_number'] = sg_num
 
             except AssertionError as err:
-                self.setFailure()
                 logger.error("Cell_Error:{}".format(err))
         else:
-            self.setFailure()
+            logger.error("Cell_Error:{}".format("%s file did not exist" % streampath))
         return results
 
-    def report_stats(self, streampath):
+    @staticmethod
+    def report_stats(streampath):
         stats = {}
         try:
-            stats = self.report_cell(streampath)
-            if not self.is_success():
+            stats = AutoCrystFEL.report_cell(streampath)
+            if not stats:
                 err = 'alltogether.stream file does not exist or empty'
                 logger.error('Job_Error:'.format(err))
                 return
@@ -600,7 +640,6 @@ class AutoCrystFEL(object):
                 stats['resolution_limit'] = Counter(rescut).most_common(1)[0][0]
                 stats['average_num_spots'] = Counter(npeaks).most_common(1)[0][0]
             else:
-                self.setFailure()
                 err = "either nothing detected as hit or indexed in the stream file"
                 logger.error('Job_Error:{}'.format(err))
 
@@ -608,7 +647,6 @@ class AutoCrystFEL(object):
             # self.scale_merge(streampath)
 
         except Exception as err:
-            self.setFailure()
             logger.error('Job_Error:{}'.format(err))
 
         return stats
@@ -618,8 +656,8 @@ class AutoCrystFEL(object):
         try:
             sh = Stream(streampath)  # streampath is a string, not Path object
             sh.get_chunk_pointers()
-            sh.read_chunks()
-            sh.get_peaklist()
+            sh.read_chunks(sh.codgas_lookup['begin_chunk'], sh.codgas_lookup['end_chunk'])
+            sh.get_peaklist(sh.codgas_lookup['begin_peaklist'], sh.codgas_lookup['end_peaklist'])
             sh.close()
             spots_data['peaks_per_pattern'] = sh.image_peaks
         except Exception as err:
@@ -648,7 +686,8 @@ def __run__(inData):
             pass
         streampath = crystTask.getOutputDirectory() / 'alltogether.stream'
         results['QualityMetrics'] = crystTask.report_stats(str(streampath))
-        crystTask.write_cell_file(results['QualityMetrics'])
+        if results:
+            crystTask.write_cell_file(results['QualityMetrics'])
 
         if inData.get("doMerging", False):
             crystTask.set_outData(results['QualityMetrics'])
@@ -688,6 +727,7 @@ def optparser():
     parser.add_argument("--processing_directory", type=str,
                         help="optional key, if you want to dump at a different folder")
     parser.add_argument("--doMerging", type=bool, default=False)
+    parser.add_argument("--doSubmit", type=bool, default=True)
     parser.add_argument("--GeneratePeaklist", type=bool, default=False)
     parser.add_argument("--indexing_method", type=str, default="mosflm",
                         help="change to asdf,or dirax or xds if needed")
